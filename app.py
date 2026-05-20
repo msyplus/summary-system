@@ -914,20 +914,23 @@ def show_rating_trend():
 
 def show_diff_highlight(text, result):
     st.markdown('**原文信息保留分析**')
-    all_kw = [kw for kw, _ in keyword_extract(text, 20)]
-    sum_kw = [kw for kw, _ in keyword_extract(
+    all_raw = keyword_extract(text, 20)
+    sum_raw = keyword_extract(
         result.get('一句话概述', '') + result.get('消费者诉求', '') + result.get('处理结果', ''), 30
-    )]
+    )
+    all_kw = [kw for kw, _ in all_raw]
+    sum_kw = [kw for kw, _ in sum_raw]
+
     c1, c2, c3 = st.columns(3)
     with c1: st.metric('原文关键词', len(all_kw))
     with c2: st.metric('保留关键词', len(sum_kw))
     with c3:
         rate = len(sum_kw) / max(1, len(all_kw)) * 100
         st.metric('信息保留率', f'{rate:.0f}%', delta='优秀' if rate >= 60 else '良好' if rate >= 40 else '需优化')
-    if all_kw:
+    if all_raw:
         kept = set(sum_kw)
         items = []
-        for kw, cnt in all_kw[:15]:
+        for kw, cnt in all_raw[:15]:
             items.append({'关键词': kw, '保留状态': '已保留' if kw in kept else '未保留', '频次': cnt})
         if items:
             df_t = pd.DataFrame(items)
