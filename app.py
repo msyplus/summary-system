@@ -738,10 +738,9 @@ def show_data_selector():
     """数据源选择器"""
     st.subheader("📥 数据源")
     # 摘要模板
-    template = st.selectbox("摘要风格", ["标准版（默认）", "简洁版（20字内）", "详细版（含分析）", "汇报版（适合周报）"],
-                            key="summary_template",
-                            help="不同场景选用不同摘要风格")
-    st.session_state["summary_template"] = template
+    st.selectbox("摘要风格", ["标准版（默认）", "简洁版（20字内）", "详细版（含分析）", "汇报版（适合周报）"],
+                 key="summary_template",
+                 help="不同场景选用不同摘要风格")
 
     mode = st.radio("输入模式", ["📞 客诉对话总结", "📋 操作日志总结", "📝 沟通记录总结"],
                     horizontal=False, key="input_mode_radio",
@@ -799,14 +798,29 @@ def show_sidebar():
     with st.sidebar:
         st.header("⚙️ 控制面板")
         sel = show_model_selector()
+        cfg = MODELS[sel]
+
+        st.divider()
+        st.subheader("📋 当前引擎")
+        with st.container(border=True):
+            st.markdown(f"**{cfg['icon']} {cfg['name']}**")
+            st.caption(f"提供商: {cfg['provider']}")
+            st.caption(f"速度: {cfg['speed']}")
+            st.caption(f"费用: {cfg['cost']}")
+
         st.divider()
         show_data_selector()
+
         st.divider()
         show_issue_entry()
+
+        st.divider()
         with st.expander("📜 版本演进", expanded=False):
             for e in VERSION_HISTORY:
                 st.markdown(f"{e['icon']} **{e['version']}** — {e['title']}{' `当前`' if e == VERSION_HISTORY[0] else ''}")
-                st.caption(f"{e['date']} | {e['advantage'][:40]}...")
+                st.caption(f"{e['date']} | {e['advantage'][:50]}...")
+                if e != VERSION_HISTORY[-1]:
+                    st.markdown("│")
         return sel
 
 
