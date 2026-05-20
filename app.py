@@ -1,5 +1,5 @@
 """
-智能总结概要系统 v1.2
+智能总结概要系统 v2.0
 AI-Powered Summary & Digest System
 
 独立作品 — 多模型 AI 引擎架构
@@ -302,6 +302,38 @@ def keyword_extract(text, top_n=10):
     return counter.most_common(top_n)
 
 
+def extract_time_nodes(text):
+    """从文本中提取带时间标记的关键事件节点"""
+    import re
+    nodes = []
+    # 匹配时间标记：2026-05-15 09:12 / [2026-05-15] / 第1次沟通 2026-05-15
+    time_patterns = [
+        (r'\[(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\]\s*(.+?)(?=\[|$)', 'bracket'),
+        (r'[【\[](\d{4}-\d{2}-\d{2})[】\]]\s*(.+?)(?=[【\[\d]|$)', 'date_only'),
+        (r'第(\d+)次沟通.*?(\d{4}-\d{2}-\d{2}).*?\n(.+?)(?=\n|$)', 'comm_note'),
+    ]
+    for pattern, ptype in time_patterns:
+        matches = re.findall(pattern, text)
+        if matches:
+            for m in matches[:8]:
+                if ptype == 'bracket':
+                    nodes.append({"time": m[0][-8:] if len(m[0]) > 10 else m[0], "event": m[1].strip()[:60]})
+                elif ptype == 'date_only':
+                    nodes.append({"time": m[0], "event": m[1].strip()[:60]})
+                elif ptype == 'comm_note':
+                    nodes.append({"time": m[1], "event": f"第{m[0]}次沟通: {m[2].strip()[:60]}"})
+            break
+    # If no time patterns found, try splitting by line breaks for multi-turn dialogue
+    if not nodes:
+        lines = [l.strip() for l in text.split('\n') if l.strip() and ('：' in l or ':' in l)]
+        if len(lines) >= 2:
+            for i, line in enumerate(lines[:8]):
+                role = line.split('：')[0].split(':')[0] if '：' in line or ':' in line else ''
+                content = line.split('：', 1)[-1].split(':', 1)[-1] if '：' in line or ':' in line else line
+                nodes.append({"time": f"T{i+1}", "event": f"{role}: {content.strip()[:50]}"})
+    return nodes[:8]
+
+
 def rule_summarize(text, amount=None):
     """规则引擎摘要生成"""
     if not isinstance(text, str) or not text.strip():
@@ -313,6 +345,9 @@ def rule_summarize(text, amount=None):
     keywords = [kw for kw, _ in keyword_extract(text, 15)]
     risk, risk_reason = assess_risk(text, amount)
     l1, l2 = keyword_event_classify(text)
+
+    # 提取时间节点
+    time_nodes = extract_time_nodes(text)
 
     # 简单分类
     cat_kw = {"退款类": ["退款", "退钱", "退费", "退货", "赔付"],
@@ -347,7 +382,7 @@ def rule_summarize(text, amount=None):
         "问题分类": category,
         "风险等级": risk,
         "风险说明": risk_reason,
-        "关键节点": keywords[:5] if keywords else ["未识别到关键节点"],
+        "关键节点": time_nodes if time_nodes else [{"time": "未知", "event": f"涉及{'、'.join(keywords[:3])}"}] if keywords else [{"time": "-", "event": "请查看原文"}],
         "消费者诉求": f"要求解决{category}相关问题" if category != "咨询类" else "咨询信息",
         "处理结果": "请查看原文" if "处理" not in text and "解决" not in text else "已提及处理方案",
         "待跟进事项": "需人工确认" if risk != "P2-普通" else "标准跟进",
@@ -392,7 +427,7 @@ def llm_summarize(text, model_key, client, amount=None):
     "问题分类": "退款类/物流类/商品质量类/服务态度类/咨询类",
     "风险等级": "P0-紧急/P1-重要/P2-普通",
     "风险说明": "判定风险等级的理由（1句话）",
-    "关键节点": ["时间节点1", "节点2", "节点3"],
+    "关键节点": [{"time": "2026-05-15 09:12", "event": "消费者首次投诉商品质量问题"}, {"time": "2026-05-15 10:30", "event": "退款审批通过"}],
     "一级事件": "商品问题/物流问题/服务问题/合规风险/咨询建议",
     "二级事件": "质量缺陷/材质不符/延迟未达/态度恶劣等（从一级事件下选择）",
     "消费者诉求": "核心诉求提炼（1-2句）",
@@ -435,6 +470,18 @@ def llm_summarize(text, model_key, client, amount=None):
 # ═══════════════════════════════════════════════════════════
 
 VERSION_HISTORY = [
+    {
+        "version": "v2.0", "date": "2026-05-20",
+        "title": "双引擎对比 + 人工评分 + 差异高亮",
+        "changes": [
+            "新增双引擎摘要对比：规则引擎 vs AI引擎并排展示，自动标注差异",
+            "新增人工评分系统：1-5星评分 + 评分趋势图 + 人机双评对比",
+            "新增原文-摘要差异高亮：绿色=保留信息，灰色=丢弃内容，可视化信息压缩",
+            "关键节点改为时间线格式展示",
+        ],
+        "advantage": "可解释AI摘要——证明摘要做得好，而不仅仅是能做摘要",
+        "icon": "🎯",
+    },
     {
         "version": "v1.2", "date": "2026-05-20",
         "title": "摘要模板 + 实体提取 + 压缩率统计",
@@ -824,6 +871,72 @@ def show_sidebar():
         return sel
 
 
+# ═══════════════════════════════════════════════════════════
+# 人工评分系统 + 差异高亮
+# ═══════════════════════════════════════════════════════════
+
+def save_rating(item_id, rating, result, engine_name):
+    if 'ratings_log' not in st.session_state:
+        st.session_state['ratings_log'] = []
+    st.session_state['ratings_log'].append({
+        'id': item_id, 'rating': rating, 'engine': engine_name,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'summary_preview': result.get('一句话概述', '')[:50],
+    })
+
+def show_rating_widget(item_id, result, engine_name):
+    rk = f'rating_{item_id}_{engine_name}'
+    if f'{rk}_submitted' not in st.session_state:
+        st.session_state[f'{rk}_submitted'] = False
+    if st.session_state[f'{rk}_submitted']:
+        rating = st.session_state.get(rk, 3)
+        st.markdown(f'⭐ {rating}/5 已评分')
+    else:
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            rating = st.slider('人工评分', 1, 5, 3, key=rk)
+        with c2:
+            if st.button('提交评分', key=f'btn_{rk}'):
+                save_rating(item_id, rating, result, engine_name)
+                st.session_state[f'{rk}_submitted'] = True
+                st.rerun()
+
+def show_rating_trend():
+    log = st.session_state.get('ratings_log', [])
+    if len(log) >= 2:
+        df_r = pd.DataFrame(log)
+        df_r['idx'] = range(len(df_r))
+        fig = px.line(df_r, x='idx', y='rating', title='人工评分趋势', markers=True, range_y=[0, 6])
+        fig.add_hline(y=3, line_dash='dash', line_color='gray', annotation_text='及格线')
+        avg = df_r['rating'].mean()
+        fig.add_hline(y=avg, line_dash='dot', line_color='green', annotation_text=f'均分{avg:.1f}')
+        st.plotly_chart(fig, use_container_width=True)
+
+def show_diff_highlight(text, result):
+    st.markdown('**原文信息保留分析**')
+    all_kw = [kw for kw, _ in keyword_extract(text, 20)]
+    sum_kw = [kw for kw, _ in keyword_extract(
+        result.get('一句话概述', '') + result.get('消费者诉求', '') + result.get('处理结果', ''), 30
+    )]
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric('原文关键词', len(all_kw))
+    with c2: st.metric('保留关键词', len(sum_kw))
+    with c3:
+        rate = len(sum_kw) / max(1, len(all_kw)) * 100
+        st.metric('信息保留率', f'{rate:.0f}%', delta='优秀' if rate >= 60 else '良好' if rate >= 40 else '需优化')
+    if all_kw:
+        kept = set(sum_kw)
+        items = []
+        for kw, cnt in all_kw[:15]:
+            items.append({'关键词': kw, '保留状态': '已保留' if kw in kept else '未保留', '频次': cnt})
+        if items:
+            df_t = pd.DataFrame(items)
+            fig = px.treemap(df_t, path=['保留状态', '关键词'], values='频次',
+                             color='保留状态', color_discrete_map={'已保留': '#4CAF50', '未保留': '#BDBDBD'})
+            fig.update_layout(height=250, margin=dict(t=0, b=0), title='信息保留分布')
+            st.plotly_chart(fig, use_container_width=True)
+
+
 def render_summary_card(result, is_ai=False):
     """渲染摘要结果卡片"""
     pri_colors = {"P0-紧急": "red", "P1-重要": "orange", "P2-普通": "green"}
@@ -850,7 +963,17 @@ def render_summary_card(result, is_ai=False):
         elif risk == "P1-重要":
             st.warning(f"⚠️ {result['风险说明']}")
 
-    st.markdown(f"**关键节点**: {' → '.join(result.get('关键节点', []))}")
+    # 时间线关键节点
+    st.markdown("**关键节点（时间线）**")
+    nodes = result.get("关键节点", [])
+    if nodes:
+        for n in nodes:
+            if isinstance(n, dict):
+                st.markdown(f"⏱ `{n.get('time', '-')}` {n.get('event', '')}")
+            else:
+                st.markdown(f"• {str(n)[:80]}")
+    else:
+        st.caption("无")
     st.markdown(f"**消费者诉求**: {result.get('消费者诉求', '-')}")
     st.markdown(f"**处理结果**: {result.get('处理结果', '-')}")
     st.markdown(f"**待跟进**: {result.get('待跟进事项', '-')}")
@@ -887,28 +1010,58 @@ def show_single_analysis(data_item, model_key, client):
         with st.spinner(f"🤖 {MODELS[model_key]['name']} 生成摘要..."):
             ai_res = llm_summarize(text, model_key, client, amount)
 
-    # 双栏对比
-    left, right = st.columns([1, 1])
-    with left:
-        st.markdown("#### 📄 原始文本")
-        with st.container(height=400, border=True):
-            st.text(text)
-        st.caption(f"原文 {len(text)} 字")
+    # 原文展示
+    st.markdown("#### 📄 原始文本")
+    with st.container(height=200, border=True):
+        st.text(text)
+    st.caption(f"原文 {len(text)} 字")
 
-    with right:
-        if is_rule:
-            st.markdown("#### 🔧 关键词提取引擎")
+    if is_rule or not ai_res:
+        # 仅规则引擎时：单引擎 + 差异高亮 + 评分
+        st.markdown("#### 🔧 关键词提取引擎")
+        render_summary_card(rule_res)
+        show_rating_widget(data_item["id"], rule_res, "规则引擎")
+        st.divider()
+        show_diff_highlight(text, rule_res)
+    else:
+        # 双引擎对比模式
+        st.markdown("#### 🤖 双引擎摘要对比")
+        left, right = st.columns([1, 1])
+        with left:
+            st.markdown("##### 🔧 规则引擎")
             render_summary_card(rule_res)
-        elif ai_res:
-            st.markdown(f"#### 🤖 {MODELS[model_key]['name']} 摘要")
+            show_rating_widget(data_item["id"], rule_res, "规则引擎")
+        with right:
+            st.markdown(f"##### 🤖 {MODELS[model_key]['name']}")
             render_summary_card(ai_res)
-            st.divider()
-            st.markdown("#### 🔧 关键词引擎（对比）")
-            render_summary_card(rule_res)
+            show_rating_widget(data_item["id"] + "_ai", ai_res, MODELS[model_key]['name'])
+
+        # 双引擎差异汇总
+        st.divider()
+        st.markdown("**双引擎差异分析**")
+        diffs = []
+        if rule_res.get("问题分类") != ai_res.get("问题分类"):
+            diffs.append(f"分类: 规则={rule_res.get('问题分类')} vs AI={ai_res.get('问题分类')}")
+        if rule_res.get("风险等级") != ai_res.get("风险等级"):
+            diffs.append(f"风险: 规则={rule_res.get('风险等级')} vs AI={ai_res.get('风险等级')}")
+        rule_entities = sum(len(v) for v in rule_res.get("提取实体", {}).values())
+        ai_entities = sum(len(v) for v in ai_res.get("提取实体", {}).values())
+        if abs(rule_entities - ai_entities) > 0:
+            diffs.append(f"实体数: 规则={rule_entities}个 vs AI={ai_entities}个")
+        if diffs:
+            for d in diffs:
+                st.warning(f"• {d}")
         else:
-            st.markdown(f"#### 🔧 关键词引擎")
-            render_summary_card(rule_res)
-            st.info("💡 接入 AI 引擎可获得更精准的结构化摘要")
+            st.success("✅ 双引擎分析一致")
+        # AI 摘要的差异高亮
+        st.divider()
+        show_diff_highlight(text, ai_res)
+
+    # 评分趋势（全局）
+    if len(st.session_state.get("ratings_log", [])) >= 2:
+        st.divider()
+        st.markdown("#### 📈 评分趋势")
+        show_rating_trend()
 
 
 def show_batch_analysis(data_list, model_key, client):
@@ -938,6 +1091,15 @@ def show_batch_analysis(data_list, model_key, client):
                 row["二级事件"] = res.get("二级事件", "")
                 row["情绪趋势"] = res.get("情绪趋势", "")
                 row["处理结果"] = res.get("处理结果", "")[:40]
+                # 关键节点转字符串
+                raw_nodes = res.get("关键节点", [])
+                if raw_nodes and isinstance(raw_nodes[0], dict):
+                    row["关键节点"] = " → ".join([f"{n.get('time','')} {n.get('event','')}" for n in raw_nodes[:4]])
+                elif raw_nodes:
+                    row["关键节点"] = " → ".join([str(n)[:40] for n in raw_nodes[:4]])
+                else:
+                    row["关键节点"] = "-"
+
                 row["待跟进"] = "是" if res.get("待跟进事项", "") and res["待跟进事项"] != "标准跟进" and res["待跟进事项"] != "无" else "否"
                 row["引擎"] = cfg["name"] if ai_res else "关键词引擎"
                 acc, _ = calc_accuracy(res, text)
@@ -975,7 +1137,7 @@ def show_batch_analysis(data_list, model_key, client):
         t1, t2, t3, t4 = st.tabs(["📋 摘要结果", "📊 准确度评估", "⚠️ Badcase 分析", "📥 导出"])
 
         with t1:
-            dc = ["id", "type", "一句话概述", "问题分类", "一级事件", "二级事件", "风险等级", "情绪趋势", "处理结果", "待跟进", "准确度", "原文长度", "引擎"]
+            dc = ["id", "type", "一句话概述", "问题分类", "一级事件", "二级事件", "风险等级", "关键节点", "情绪趋势", "处理结果", "待跟进", "准确度", "原文长度", "引擎"]
             st.dataframe(dr[[c for c in dc if c in dr.columns]], use_container_width=True, height=300)
             for _, row in dr.iterrows():
                 with st.expander(f"{row['id']} — {str(row.get('一句话概述', ''))[:60]}..."):
@@ -1064,7 +1226,7 @@ def main():
         st.title("📝 智能总结概要系统")
         st.caption("多源输入 + AI 结构化摘要 + 风险等级评估 | 信息压缩工具")
     with c2:
-        st.metric("版本", "v1.2", delta="摘要模板+实体提取")
+        st.metric("版本", "v2.0", delta="双引擎对比+评分")
         st.metric("本地AI", "就绪" if (check_ollama_available() and check_ollama_model()) else "待启动")
     st.divider()
 
@@ -1075,7 +1237,7 @@ def main():
 
     if data is None:
         st.markdown("""
-        ### 👋 智能总结概要系统 v1.2
+        ### 👋 智能总结概要系统 v2.0
 
         将冗长的客服对话、操作日志、沟通记录自动提炼为**结构化摘要**。
 
