@@ -73,9 +73,16 @@ def get_client(model_key):
     if cfg["sdk_type"] == "openai":
         from openai import OpenAI
         if not cfg["key_required"]:
-            return OpenAI(base_url=cfg["base_url"], api_key="ollama")
+            if not check_ollama_available() or not check_ollama_model(cfg["model_id"]):
+                return None
+            return OpenAI(
+                base_url=cfg["base_url"],
+                api_key="ollama",
+                timeout=20.0,
+                max_retries=0,
+            )
         key = os.getenv(cfg["key_name"], "") or st.session_state.get(f"key_{model_key}", "")
-        return OpenAI(base_url=cfg["base_url"], api_key=key) if key else None
+        return OpenAI(base_url=cfg["base_url"], api_key=key, timeout=30.0, max_retries=0) if key else None
     elif cfg["sdk_type"] == "gemini":
         import google.generativeai as genai
         key = os.getenv("GEMINI_API_KEY", "") or st.session_state.get("key_gemini", "")
@@ -86,6 +93,7 @@ def get_client(model_key):
     return None
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def check_ollama_available():
     import socket
     try:
@@ -98,10 +106,16 @@ def check_ollama_available():
         return False
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def check_ollama_model(model_id="qwen2.5:3b"):
     try:
         from openai import OpenAI
-        c = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+        c = OpenAI(
+            base_url="http://localhost:11434/v1",
+            api_key="ollama",
+            timeout=2.0,
+            max_retries=0,
+        )
         return model_id in [m.id for m in c.models.list()]
     except Exception:
         return False
@@ -774,7 +788,7 @@ def show_issue_entry():
         c1, c2 = st.columns(2)
         with c1: it = st.selectbox("类型", ["摘要不准", "Bug", "建议", "其他"], key="sum_issue_ty")
         with c2: iu = st.selectbox("紧急度", ["一般", "重要", "紧急"], key="sum_issue_ur")
-        if st.button("提交", key="sum_issue_sub", type="primary", use_container_width=True):
+        if st.button("提交", key="sum_issue_sub", type="primary", width='stretch'):
             if not t.strip(): st.error("标题必填")
             else:
                 save_issue({"title": t, "description": d, "type": it, "urgency": iu})
@@ -798,7 +812,7 @@ def show_data_selector():
     st.session_state["input_mode"] = mode_map[mode]
 
     demo_funcs = {"客诉对话": generate_demo_dialogues, "操作日志": generate_demo_logs, "沟通记录": generate_demo_notes}
-    if st.button(f"🎲 加载5条{mode_map[mode]}示例", type="primary", use_container_width=True):
+    if st.button(f"🎲 加载5条{mode_map[mode]}示例", type="primary", width='stretch'):
         st.session_state["summary_data"] = demo_funcs[mode_map[mode]]()
         st.session_state["summary_results"] = None
         st.rerun()
@@ -837,7 +851,7 @@ def show_data_selector():
             st.info("建议先使用上方「加载5条示例」完成演示；上传 Excel 时请确认依赖 openpyxl 已安装。")
 
     if st.session_state.get("summary_data"):
-        if st.button("🗑️ 清除", use_container_width=True):
+        if st.button("🗑️ 清除", width='stretch'):
             st.session_state["summary_data"] = None
             st.session_state["summary_results"] = None
             st.rerun()
@@ -912,7 +926,7 @@ def show_rating_trend():
         fig.add_hline(y=3, line_dash='dash', line_color='gray', annotation_text='及格线')
         avg = df_r['rating'].mean()
         fig.add_hline(y=avg, line_dash='dot', line_color='green', annotation_text=f'均分{avg:.1f}')
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 def show_diff_highlight(text, result):
     st.markdown('**原文信息保留分析**')
@@ -939,7 +953,7 @@ def show_diff_highlight(text, result):
             fig = px.treemap(df_t, path=['保留状态', '关键词'], values='频次',
                              color='保留状态', color_discrete_map={'已保留': '#4CAF50', '未保留': '#BDBDBD'})
             fig.update_layout(height=250, margin=dict(t=0, b=0), title='信息保留分布')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
 
 def render_summary_card(result, is_ai=False):
@@ -1143,7 +1157,7 @@ def show_batch_analysis(data_list, model_key, client):
 
         with t1:
             dc = ["id", "type", "一句话概述", "问题分类", "一级事件", "二级事件", "风险等级", "关键节点", "情绪趋势", "处理结果", "待跟进", "准确度", "原文长度", "引擎"]
-            st.dataframe(dr[[c for c in dc if c in dr.columns]], use_container_width=True, height=300)
+            st.dataframe(dr[[c for c in dc if c in dr.columns]], width='stretch', height=300)
             for _, row in dr.iterrows():
                 with st.expander(f"{row['id']} — {str(row.get('一句话概述', ''))[:60]}..."):
                     st.text(row.get("text", ""))
@@ -1171,7 +1185,7 @@ def show_batch_analysis(data_list, model_key, client):
                                        labels={"x": "准确度%"}, color_discrete_sequence=["#4CAF50"])
                 fig_acc.add_vline(x=60, line_dash="dash", line_color="red", annotation_text="及格线")
                 fig_acc.add_vline(x=80, line_dash="dash", line_color="blue", annotation_text="优秀线")
-                st.plotly_chart(fig_acc, use_container_width=True)
+                st.plotly_chart(fig_acc, width='stretch')
                 # 各条准确度明细
                 st.markdown("**准确度明细**")
                 for _, row in dr.iterrows():
