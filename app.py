@@ -831,8 +831,10 @@ def show_data_selector():
                 st.success(f"已加载 {len(data_list)} 条数据")
             else:
                 st.error("未找到文本列（text/内容/文本/对话/content）")
+                st.info("请确认 CSV/Excel 至少包含 text、内容、文本、对话、content 中任一列。")
         except Exception as e:
             st.error(f"读取失败: {e}")
+            st.info("建议先使用上方「加载5条示例」完成演示；上传 Excel 时请确认依赖 openpyxl 已安装。")
 
     if st.session_state.get("summary_data"):
         if st.button("🗑️ 清除", use_container_width=True):
@@ -1226,8 +1228,8 @@ def main():
 
     c1, c2 = st.columns([3, 1])
     with c1:
-        st.title("📝 智能总结概要系统")
-        st.caption("多源输入 + AI 结构化摘要 + 风险等级评估 | 信息压缩工具")
+        st.title("📝 服务事件智能摘要")
+        st.caption("默认模板摘要无需 API Key | 对话/日志/备注 → 结构化事件摘要")
     with c2:
         st.metric("版本", "v2.0", delta="双引擎对比+评分")
         st.metric("本地AI", "就绪" if (check_ollama_available() and check_ollama_model()) else "待启动")
@@ -1240,9 +1242,11 @@ def main():
 
     if data is None:
         st.markdown("""
-        ### 👋 智能总结概要系统 v2.0
+        ### 👋 服务事件智能摘要 v2.0
 
-        将冗长的客服对话、操作日志、沟通记录自动提炼为**结构化摘要**。
+        这个 Demo 模拟服务 AI 工作流的第四步：将冗长的客服对话、操作日志、沟通记录自动提炼为**结构化摘要**，降低工单录入和复盘分析成本。
+
+        **默认无需 API Key**：关键词/模板摘要可直接演示；接入 AI 引擎后可体验更自然的语义摘要。
 
         #### 🎯 三种输入模式
         | 模式 | 场景 | 示例数据 |
@@ -1254,7 +1258,10 @@ def main():
         #### 📊 摘要输出8个维度
         一句话概述 · 问题分类 · **风险等级(P0/P1/P2)** · 关键节点 · 消费者诉求 · 处理结果 · 待跟进事项 · 情绪趋势
 
-        👈 左侧选择数据源加载示例数据开始体验
+        #### 🚀 面试演示路径
+        1. 左侧选择一种输入模式并加载 5 条示例。
+        2. 逐条查看摘要结构和风险等级。
+        3. 切换批量评估，展示摘要质量评分和导出能力。
         """)
         return
 

@@ -1,1 +1,9 @@
 __pycache__/
+*.py[cod]
+.env
+.env.*
+.venv/
+venv/
+.streamlit/secrets.toml
+*.csv
+*.bat
